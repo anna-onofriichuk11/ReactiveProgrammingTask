@@ -43,7 +43,7 @@ namespace ProcessingApp.Price_Service.Src.Service.Impl
             // TODO: verify that price message are valid
             // HINT: Use MessageMapper methods to perform filtering and validation
 
-            return Observable.Never<Dictionary<string, object>>();
+            return input.Where(message => MessageMapper.IsPriceMessageType(message) && MessageMapper.IsValidPriceMessage(message));
         }
 
         // Visible for testing
@@ -51,7 +51,7 @@ namespace ProcessingApp.Price_Service.Src.Service.Impl
         {
             // TODO map to Statistic message using MessageMapper.mapToPriceMessage
 
-            return Observable.Never<MessageDTO<float>>();
+            return input.Select(message => MessageMapper.MapToPriceMessage(message));
         }
 
         // 1.1)   TODO Collect crypto currency price during the interval of seconds
@@ -79,7 +79,19 @@ namespace ProcessingApp.Price_Service.Src.Service.Impl
         private static IObservable<MessageDTO<float>> AveragePrice(IObservable<long> requestedInterval,
             IObservable<MessageDTO<float>> priceData)
         {
-            return Observable.Never<MessageDTO<float>>();
+            return Observable.Concat(
+                Observable.Return(DEFAULT_AVG_PRICE_INTERVAL), requestedInterval)
+                .Select(interval => 
+                    priceData
+                        .Window(TimeSpan.FromSeconds(interval))
+                        .SelectMany(x =>
+                            x.GroupBy(i => i.Currency)
+                             .SelectMany(gr => gr
+                             .Aggregate(Sum.Empty(), (sum, mes) => sum.Add(mes.Data), sum => sum.Avg())
+                             .Select(avg => MessageDTO<float>.Avg(avg, gr.Key, "Local"))
+                            ))
+                )
+                .Switch();
         }
     }
 }
