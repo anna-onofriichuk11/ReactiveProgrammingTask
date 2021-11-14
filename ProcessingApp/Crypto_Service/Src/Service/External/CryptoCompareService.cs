@@ -34,13 +34,16 @@ namespace ProcessingApp.Crypto_Service.Src.Service.External
         // TODO: implement resilience such as retry with delay
         private static IObservable<T> ProvideResilience<T>(IObservable<T> input)
         {
-            return Observable.Never<T>();
+            return input.RetryWhen(errors => errors.Delay(TimeSpan.FromSeconds(2)));
         }
 
         // TODO: implement caching of 3 last elements & multi subscribers support
         private static IObservable<T> ProvideCaching<T>(IObservable<T> input)
         {
-            return Observable.Never<T>();
+            var connectableObservable = input.Multicast(new ReplaySubject<T>(3));
+            connectableObservable.Connect();
+
+            return connectableObservable;
         }
     }
 }
