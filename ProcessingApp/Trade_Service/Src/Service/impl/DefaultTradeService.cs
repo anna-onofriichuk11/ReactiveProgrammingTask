@@ -50,13 +50,13 @@ namespace ProcessingApp.Trade_Service.Src.Service.impl
             IObservable<Dictionary<string, object>> input)
         {
             // TODO: Add implementation to produce trading events
-            return Observable.Never<MessageDTO<MessageTrade>>();
+            return input.Where(message => MessageMapper.IsTradeMessageType(message)).Select(message => MessageMapper.MapToTradeMessage(message));
         }
 
         private IObservable<Trade> MapToDomainTrade(IObservable<MessageDTO<MessageTrade>> input)
         {
             // TODO: Add implementation to mapping to com.example.part_10.domain.Trade
-            return Observable.Never<Trade>();
+            return input.Select(message => DomainMapper.MapToDomain(message));
         }
 
         private static IObservable<int> ResilientlyStoreByBatchesToAllRepositories(
@@ -64,7 +64,29 @@ namespace ProcessingApp.Trade_Service.Src.Service.impl
             ITradeRepository tradeRepository1,
             ITradeRepository tradeRepository2)
         {
-            return Observable.Never<int>();
+            var bhSubject = new BehaviorSubject<object>(new object());
+            bhSubject.OnNext(new object());
+
+            IObservable<(long, object)> bounds = Observable.Interval(TimeSpan.FromSeconds(1)).Zip(bhSubject, (n, o) => (n, o));
+
+            return input
+                .Buffer(bounds)
+                .SelectMany(trades =>
+                {
+                    var tradesList = trades.ToList();
+
+                    return Save(tradeRepository1, tradesList)
+                        .Merge(Save(tradeRepository2, tradesList))
+                        .Do(onNext: x => { },
+                            onCompleted: () => bhSubject.OnNext(new object())
+                            );
+                });
+
+            static IObservable<int> Save
+                (ITradeRepository tradeRepository, List<Trade> tradesList)
+                => tradeRepository
+                            .SaveAll(tradesList)
+                            .Timeout(TimeSpan.FromSeconds(1)).Retry(100);
         }
     }
 }
